@@ -1,28 +1,28 @@
-import { inngest } from "../client";
-import Ticket from "../../models/ticket"
-import User from "../../models/user";
+import { inngest } from "../client.js";
+import Ticket from "../../models/ticket.js"
+import User from "../../models/user.js";
 import { NonRetriableError } from "inngest";
-import { sendMail } from "../../utils/mailer";
-import analyzeTicket from "../../utils/ai";
+import { sendMail } from "../../utils/mailer.js";
+import analyzeTicket from "../../utils/ai.js";
 
 export const onTicketCreated = inngest.createFunction(
     { id: "on-ticket-created", retries: 2 },
     { event: "ticket/created" },
-    async({event, step}) => {
+    async ({ event, step }) => {
         try {
-            
+
             const { ticketId } = event.data;
 
             // Fetch ticket from DB
-            const ticket = await step.run("fetch-ticket", async() => {
+            const ticket = await step.run("fetch-ticket", async () => {
                 const ticketObject = await Ticket.findById(ticketId);
-                if(!ticket){
+                if (!ticket) {
                     throw new NonRetriableError("Ticket not found");
                 }
                 return ticketObject;
             });
 
-            await step.run("update-ticket-status", async() => {
+            await step.run("update-ticket-status", async () => {
                 await Ticket.findByIdAndUpdate(ticket._id, { status: "TODO" });
             });
 
@@ -30,11 +30,11 @@ export const onTicketCreated = inngest.createFunction(
 
             const relatedskills = await step.run("ai-processing", async () => {
                 let skills = [];
-                if (aiResponse){
+                if (aiResponse) {
                     await Ticket.findByIdAndUpdate(ticket._id, {
                         priority: !["low", "medium", "high"].includes(aiResponse.priority)
-                        ? "medium"
-                        : aiResponse.priority,
+                            ? "medium"
+                            : aiResponse.priority,
                         helpfulNotes: aiResponse.helpfulNotes,
                         status: "IN_PROGRESS",
                         relatedSkills: aiResponse.relatedSkills,
@@ -55,19 +55,19 @@ export const onTicketCreated = inngest.createFunction(
                     },
                 });
 
-                if(!user){
+                if (!user) {
                     user = await User.findOne({
                         role: "admin",
                     });
                 }
-                await Ticket.findByIdAndUpdate(ticket._id,{
+                await Ticket.findByIdAndUpdate(ticket._id, {
                     assignedTo: user?._id || null,
                 });
                 return user;
             });
 
             await step.run("send-email-notification", async () => {
-                if(moderator){
+                if (moderator) {
                     const finalTicket = await Ticket.findById(ticket._id);
                     await sendMail(
                         moderator.email,
